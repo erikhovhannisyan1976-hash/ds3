@@ -116,4 +116,21 @@ async def update_countdown():
 @tasks.loop(minutes=5)
 async def update_channel_name():
     channel = client.get_channel(NAME_CHANNEL_ID)
-    if
+    if not channel:
+        return
+
+    days, hours, _, _ = time_until_new_year()
+    new_name = f"До НГ: {big(days)}д {big(hours)}ч"
+
+    if channel.name != new_name:
+        await channel.edit(name=new_name)
+
+
+@client.event
+async def on_ready():
+    print(f"✅ {client.user} онлайн")
+    update_countdown.start()
+    update_channel_name.start()
+
+
+client.run(TOKEN)
