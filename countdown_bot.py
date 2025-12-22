@@ -1,24 +1,45 @@
 import discord
 from discord.ext import tasks
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import itertools
 import os
 import sys
 
+# ===== KEEP ALIVE (Replit) =====
+from flask import Flask
+from threading import Thread
+
+app = Flask("")
+
+@app.route("/")
+def home():
+    return "Bot is alive"
+
+def run():
+    app.run(host="0.0.0.0", port=8080)
+
+def keep_alive():
+    Thread(target=run).start()
+
+keep_alive()
+# ==============================
+
 # ================= НАСТРОЙКИ =================
-TOKEN = os.getenv("TOKEN")  # токен берётся из переменных окружения
+TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = 1452399245624868934
 NAME_CHANNEL_ID = 1452409457739829289
+TZ = timezone(timedelta(hours=3))  # МСК
 # =============================================
 
 if not TOKEN:
-    print("❌ ОШИБКА: TOKEN не найден в переменных окружения")
+    print("❌ TOKEN не найден")
     sys.exit(1)
 
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
 message_to_edit = None
+new_year_fired = False
 
 BIG_NUMBERS = {
     "0": "𝟎", "1": "𝟏", "2": "𝟐", "3": "𝟑", "4": "𝟒",
@@ -32,44 +53,56 @@ COLORS = itertools.cycle([
 EMOJIS = itertools.cycle(["🎉", "✨", "🎆", "🎇"])
 
 
+def big(n):
+    return "".join(BIG_NUMBERS.get(d, d) for d in str(n))
+
+
 def time_until_new_year():
-    now = datetime.now()
-    new_year = datetime(now.year + 1, 1, 1)
-    delta = new_year - now
-    days = delta.days
-    hours, remainder = divmod(delta.seconds, 3600)
-    minutes, seconds = divmod(remainder, 60)
+    now = datetime.now(TZ)
+    target = datetime(now.year + 1, 1, 1, tzinfo=TZ)
+
+    delta = target - now
+    total = int(delta.total_seconds())
+
+    if total <= 0:
+        return 0, 0, 0, 0
+
+    days = total // 86400
+    hours = (total % 86400) // 3600
+    minutes = (total % 3600) // 60
+    seconds = total % 60
+
     return days, hours, minutes, seconds
-
-
-def big_number_format(number):
-    return "".join(BIG_NUMBERS.get(d, d) for d in str(number))
 
 
 @tasks.loop(seconds=1)
 async def update_countdown():
-    global message_to_edit
+    global message_to_edit, new_year_fired
+
     channel = client.get_channel(CHANNEL_ID)
     if not channel:
         return
 
     days, hours, minutes, seconds = time_until_new_year()
+
+    # 🎆 Новый год
+    if days == hours == minutes == seconds == 0 and not new_year_fired:
+        new_year_fired = True
+        await channel.send("🎉🎆 **С НОВЫМ ГОДОМ!!!** 🎆🎉")
+
     color = next(COLORS)
     emoji = next(EMOJIS)
 
-    description = (
-        f"🗓 Дней: {big_number_format(days)}\n"
-        f"⏰ Часов: {big_number_format(hours)}\n"
-        f"⏱ Минут: {big_number_format(minutes)}\n"
-        f"⏳ Секунд: {big_number_format(seconds)}"
-    )
-
     embed = discord.Embed(
         title=f"{emoji} Обратный отсчёт до Нового года {emoji}",
-        description=description,
+        description=(
+            f"🗓 Дней: {big(days)}\n"
+            f"⏰ Часов: {big(hours)}\n"
+            f"⏱ Минут: {big(minutes)}\n"
+            f"⏳ Секунд: {big(seconds)}"
+        ),
         color=color
     )
-    embed.set_footer(text="Обновление в реальном времени")
 
     if message_to_edit:
         try:
@@ -80,28 +113,7 @@ async def update_countdown():
         message_to_edit = await channel.send(embed=embed)
 
 
-@tasks.loop(hours=1)
+@tasks.loop(minutes=5)
 async def update_channel_name():
-    await client.wait_until_ready()
     channel = client.get_channel(NAME_CHANNEL_ID)
-    if not channel:
-        return
-
-    days, hours, _, _ = time_until_new_year()
-    new_name = f"До Нового года: {big_number_format(days)}д {big_number_format(hours)}ч"
-
-    if channel.name != new_name:
-        try:
-            await channel.edit(name=new_name)
-        except discord.HTTPException as e:
-            print(f"⚠ Ошибка обновления канала: {e}")
-
-
-@client.event
-async def on_ready():
-    print(f"✅ Бот {client.user} запущен и работает")
-    update_countdown.start()
-    update_channel_name.start()
-
-
-client.run(TOKEN)
+    if
