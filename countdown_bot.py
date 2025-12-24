@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 import itertools
 import os
 import sys
+import json
 
 # ===== KEEP ALIVE (Replit) =====
 from flask import Flask
@@ -29,6 +30,7 @@ TOKEN = os.getenv("TOKEN")
 CHANNEL_ID = 1452399245624868934
 NAME_CHANNEL_ID = 1452409457739829289
 TZ = timezone(timedelta(hours=3))  # МСК
+DATA_FILE = "data.json"
 # =============================================
 
 if not TOKEN:
@@ -50,32 +52,36 @@ COLORS = itertools.cycle([
     0xff4500, 0xffd700, 0x00ffcc, 0x8a2be2, 0xff69b4
 ])
 
-EMOJIS = itertools.cycle(["🎉", "✨", "🎆", "🎇"])
-
-
 def big(n):
     return "".join(BIG_NUMBERS.get(d, d) for d in str(n))
-
 
 def time_until_new_year():
     now = datetime.now(TZ)
     target = datetime(now.year + 1, 1, 1, tzinfo=TZ)
-
     delta = target - now
     total = int(delta.total_seconds())
 
     if total <= 0:
         return 0, 0, 0, 0
 
-    days = total // 86400
-    hours = (total % 86400) // 3600
-    minutes = (total % 3600) // 60
-    seconds = total % 60
+    return (
+        total // 86400,
+        (total % 86400) // 3600,
+        (total % 3600) // 60,
+        total % 60
+    )
 
-    return days, hours, minutes, seconds
+def load_message_id():
+    if os.path.exists(DATA_FILE):
+        with open(DATA_FILE, "r") as f:
+            return json.load(f).get("message_id")
+    return None
 
+def save_message_id(mid):
+    with open(DATA_FILE, "w") as f:
+        json.dump({"message_id": mid}, f)
 
-@tasks.loop(seconds=1)
+@tasks.loop(seconds=10)
 async def update_countdown():
     global message_to_edit, new_year_fired
 
@@ -83,35 +89,38 @@ async def update_countdown():
     if not channel:
         return
 
+    if not message_to_edit:
+        mid = load_message_id()
+        if mid:
+            try:
+                message_to_edit = await channel.fetch_message(mid)
+            except:
+                pass
+
+        if not message_to_edit:
+            message_to_edit = await channel.send("⏳ Запуск таймера...")
+            save_message_id(message_to_edit.id)
+
     days, hours, minutes, seconds = time_until_new_year()
 
-    # 🎆 Новый год
     if days == hours == minutes == seconds == 0 and not new_year_fired:
         new_year_fired = True
         await channel.send("🎉🎆 **С НОВЫМ ГОДОМ!!!** 🎆🎉")
 
     color = next(COLORS)
-    emoji = next(EMOJIS)
 
     embed = discord.Embed(
-        title=f"{emoji} Обратный отсчёт до Нового года {emoji}",
+        title="🎄 Обратный отсчёт до Нового года 🎄",
         description=(
-            f"🗓 Дней: {big(days)}\n"
-            f"⏰ Часов: {big(hours)}\n"
-            f"⏱ Минут: {big(minutes)}\n"
-            f"⏳ Секунд: {big(seconds)}"
+            f"🗓 **Дней:** {big(days)}\n"
+            f"⏰ **Часов:** {big(hours)}\n"
+            f"⏱ **Минут:** {big(minutes)}\n"
+            f"⏳ **Секунд:** {big(seconds)}"
         ),
         color=color
     )
 
-    if message_to_edit:
-        try:
-            await message_to_edit.edit(embed=embed)
-        except discord.NotFound:
-            message_to_edit = await channel.send(embed=embed)
-    else:
-        message_to_edit = await channel.send(embed=embed)
-
+    await message_to_edit.edit(embed=embed)
 
 @tasks.loop(minutes=5)
 async def update_channel_name():
@@ -125,12 +134,10 @@ async def update_channel_name():
     if channel.name != new_name:
         await channel.edit(name=new_name)
 
-
 @client.event
 async def on_ready():
     print(f"✅ {client.user} онлайн")
     update_countdown.start()
     update_channel_name.start()
-
 
 client.run(TOKEN)
