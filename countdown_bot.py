@@ -41,23 +41,25 @@ intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 
 message_to_edit = None
-new_year_fired = False
+summer_fired = False
 
 BIG_NUMBERS = {
     "0": "𝟎", "1": "𝟏", "2": "𝟐", "3": "𝟑", "4": "𝟒",
     "5": "𝟓", "6": "𝟔", "7": "𝟕", "8": "𝟖", "9": "𝟗"
 }
 
-COLORS = itertools.cycle([
-    0xff4500, 0xffd700, 0x00ffcc, 0x8a2be2, 0xff69b4
-])
+COLORS = itertools.cycle([0xff4500, 0xffd700, 0x00ffcc, 0x8a2be2, 0xff69b4])
 
 def big(n):
     return "".join(BIG_NUMBERS.get(d, d) for d in str(n))
 
-def time_until_new_year():
+# Обновляем функцию отсчёта времени для ЛЕТА
+def time_until_summer():
     now = datetime.now(TZ)
-    target = datetime(now.year + 1, 1, 1, tzinfo=TZ)
+    # Лето начинается 1 июня
+    target = datetime(now.year, 6, 1, tzinfo=TZ)
+    if now > target:
+        target = datetime(now.year + 1, 6, 1, tzinfo=TZ)  # Если уже после 1 июня, то отсчитываем до следующего года
     delta = target - now
     total = int(delta.total_seconds())
 
@@ -83,7 +85,7 @@ def save_message_id(mid):
 
 @tasks.loop(seconds=10)
 async def update_countdown():
-    global message_to_edit, new_year_fired
+    global message_to_edit, summer_fired
 
     channel = client.get_channel(CHANNEL_ID)
     if not channel:
@@ -98,20 +100,20 @@ async def update_countdown():
                 pass
 
         if not message_to_edit:
-            message_to_edit = await channel.send("⏳ Запуск таймера...")
+            message_to_edit = await channel.send
             save_message_id(message_to_edit.id)
 
-    days, hours, minutes, seconds = time_until_new_year()
+    days, hours, minutes, seconds = time_until_summer()
 
-    if days == hours == minutes == seconds == 0 and not new_year_fired:
-        new_year_fired = True
-        await channel.send("🎉🎆 **С НОВЫМ ГОДОМ!!!** 🎆🎉")
+    if days == hours == minutes == seconds == 0 and not summer_fired:
+        summer_fired = True
+        await channel.send("🎉🌞 **ЛЕТО НАСТУПИЛО!!!** 🌞🎉")
 
     color = next(COLORS)
 
     embed = discord.Embed(
-        title="🎄 Обратный отсчёт до Нового года 🎄",
-        description=(
+        title="☀️ Обратный отсчёт до ЛЕТА ☀️",
+        description=( 
             f"🗓 **Дней:** {big(days)}\n"
             f"⏰ **Часов:** {big(hours)}\n"
             f"⏱ **Минут:** {big(minutes)}\n"
@@ -128,8 +130,8 @@ async def update_channel_name():
     if not channel:
         return
 
-    days, hours, _, _ = time_until_new_year()
-    new_name = f"До НГ: {big(days)}д {big(hours)}ч"
+    days, hours, _, _ = time_until_summer()
+    new_name = f"До Лета: {big(days)}д {big(hours)}ч"
 
     if channel.name != new_name:
         await channel.edit(name=new_name)
@@ -141,3 +143,4 @@ async def on_ready():
     update_channel_name.start()
 
 client.run(TOKEN)
+Ы
